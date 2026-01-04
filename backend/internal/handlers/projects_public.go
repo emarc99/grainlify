@@ -139,6 +139,12 @@ WHERE p.id = $1 AND p.status = 'verified' AND p.deleted_at IS NULL
 UPDATE projects SET stars_count=$2, forks_count=$3, updated_at=now()
 WHERE id=$1
 `, projectID, stars, forks)
+		} else {
+			slog.Warn("failed to fetch repo metadata from GitHub",
+				"project_id", projectID,
+				"github_full_name", fullName,
+				"error", err,
+			)
 		}
 
 		// GitHub language breakdown (best effort)
@@ -163,6 +169,12 @@ WHERE id=$1
 		var readmeContent string
 		if readme, err := gh.GetReadme(ctx, "", fullName); err == nil {
 			readmeContent = readme
+		} else {
+			slog.Warn("failed to fetch README for project",
+				"project_id", projectID,
+				"github_full_name", fullName,
+				"error", err,
+			)
 		}
 
 		resp := fiber.Map{
