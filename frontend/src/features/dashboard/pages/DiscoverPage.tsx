@@ -124,7 +124,7 @@ const getPrimaryTag = (labels: any[]): string | undefined => {
 
 export function DiscoverPage() {
   const { theme } = useTheme();
-  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+  const [selectedIssue, setSelectedIssue] = useState<{ issueId: string; projectId?: string } | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<Array<{
     id: string;
@@ -263,11 +263,12 @@ export function DiscoverPage() {
   }, [projects, isLoadingProjects]);
 
   // If an issue is selected, show the detail page instead
-  if (selectedIssueId) {
+  if (selectedIssue) {
     return (
       <IssueDetailPage
-        issueId={selectedIssueId}
-        onClose={() => setSelectedIssueId(null)}
+        issueId={selectedIssue.issueId}
+        projectId={selectedIssue.projectId}
+        onClose={() => setSelectedIssue(null)}
       />
     );
   }
@@ -536,7 +537,7 @@ export function DiscoverPage() {
                   daysLeft={issue.daysLeft}
                   variant="recommended"
                   primaryTag={issue.primaryTag}
-                  onClick={() => setSelectedIssueId(issue.id)}
+                  onClick={() => setSelectedIssue({ issueId: issue.id, projectId: issue.projectId })}
                 />
               </div>
             ))}

@@ -12,10 +12,18 @@ export const getAuthToken = (): string | null => {
 
 export const setAuthToken = (token: string): void => {
   localStorage.setItem('patchwork_jwt', token);
+  // Notify app code (AuthContext) immediately, since storage events don't fire
+  // in the same tab that performed the write.
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('patchwork-auth-token', { detail: { token } }));
+  }
 };
 
 export const removeAuthToken = (): void => {
   localStorage.removeItem('patchwork_jwt');
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('patchwork-auth-token', { detail: { token: null } }));
+  }
 };
 
 // API request helper

@@ -9,7 +9,7 @@ import { LanguageIcon } from '../../../shared/components/LanguageIcon';
 
 interface ProjectDetailPageProps {
   onBack?: () => void;
-  onIssueClick?: (id: string) => void;
+  onIssueClick?: (issueId: string, projectId: string) => void;
   projectId?: string;
   onClose?: () => void;
 }
@@ -841,7 +841,10 @@ export function ProjectDetailPage({ onBack, onIssueClick, projectId: propProject
                 className={`p-6 rounded-[16px] backdrop-blur-[25px] border border-white/25 hover:bg-white/[0.15] transition-all cursor-pointer ${
                   theme === 'dark' ? 'bg-white/[0.08]' : 'bg-white/[0.08]'
                 }`}
-                onClick={() => onIssueClick && onIssueClick(String(issue.github_issue_id))}
+                onClick={() => {
+                  if (!projectId) return;
+                  onIssueClick?.(String(issue.github_issue_id), String(projectId));
+                }}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-start gap-3 flex-1">

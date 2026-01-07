@@ -36,7 +36,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState('discover');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+  const [selectedIssue, setSelectedIssue] = useState<{ issueId: string; projectId?: string } | null>(null);
   const [selectedEcosystemId, setSelectedEcosystemId] = useState<string | null>(null);
   const [selectedEcosystemName, setSelectedEcosystemName] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
@@ -83,7 +83,7 @@ export function Dashboard() {
   const handleNavigation = (page: string) => {
     setCurrentPage(page);
     setSelectedProjectId(null);
-    setSelectedIssueId(null);
+    setSelectedIssue(null);
     setSelectedEcosystemId(null);
     setSelectedEcosystemName(null);
     setSelectedEventId(null);
@@ -99,7 +99,7 @@ export function Dashboard() {
     setActiveRole(role);
     // Auto-navigate based on role and clear selections
     setSelectedProjectId(null);
-    setSelectedIssueId(null);
+    setSelectedIssue(null);
     setSelectedEcosystemId(null);
     setSelectedEcosystemName(null);
     setSelectedEventId(null);
@@ -378,16 +378,17 @@ export function Dashboard() {
 
           {/* Page Content */}
           <div className="pt-[68px]">
-            {selectedIssueId ? (
+            {selectedIssue ? (
               <IssueDetailPage 
-                issueId={selectedIssueId}
-                onClose={() => setSelectedIssueId(null)} 
+                issueId={selectedIssue.issueId}
+                projectId={selectedIssue.projectId}
+                onClose={() => setSelectedIssue(null)} 
               />
             ) : selectedProjectId ? (
               <ProjectDetailPage 
                 projectId={selectedProjectId}
                 onBack={() => setSelectedProjectId(null)}
-                onIssueClick={(id) => setSelectedIssueId(id)}
+                onIssueClick={(issueId, projectId) => setSelectedIssue({ issueId, projectId })}
               />
             ) : (
               <>
@@ -434,7 +435,7 @@ export function Dashboard() {
                     }}
                     onIssueClick={(issueId, projectId) => {
                       setSelectedProjectId(projectId);
-                      setSelectedIssueId(issueId);
+                      setSelectedIssue({ issueId, projectId });
                       setCurrentPage('discover');
                     }}
                   />
@@ -448,7 +449,7 @@ export function Dashboard() {
                   <SearchPage 
                     onBack={() => setCurrentPage('discover')}
                     onIssueClick={(id) => {
-                      setSelectedIssueId(id);
+                      setSelectedIssue({ issueId: id });
                       setCurrentPage('discover');
                     }}
                     onProjectClick={(id) => {

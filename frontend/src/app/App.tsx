@@ -5,6 +5,13 @@ import { LandingPage } from '../features/landing';
 import { SignInPage, SignUpPage, AuthCallbackPage } from '../features/auth';
 import { Dashboard } from '../features/dashboard';
 
+function ProtectedRoute({ children }: { children: JSX.Element }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return children; // let AuthProvider finish initial check
+  if (!isAuthenticated) return <Navigate to="/" replace />;
+  return children;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -15,7 +22,14 @@ export default function App() {
             <Route path="/signin" element={<SignInPage />} />
             <Route path="/signup" element={<SignUpPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
           </Routes>
         </AuthProvider>
       </ThemeProvider>

@@ -30,10 +30,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check for existing token on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      const token = getAuthToken();
+  const checkAuth = async () => {
+    const token = getAuthToken();
       console.log('AuthContext - Checking authentication on mount');
       console.log('AuthContext - Token found:', token ? 'Yes' : 'No');
       
@@ -60,12 +58,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } else {
         console.log('AuthContext - No token found, user not authenticated');
+        setUser(null);
+        setUserRole(null);
+        setUserId(null);
       }
       setIsLoading(false);
       console.log('AuthContext - Loading complete');
+  };
+
+  // Check for existing token on mount
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  // Keep auth state in sync when token changes (logout in same tab, 401s, etc).
+  useEffect(() => {
+    const onTokenEvent = (e: Event) => {
+      const ce = e as CustomEvent<{ token: string | null }>;
+      const token = ce.detail?.token ?? null;
+      if (!token) {
+        setUser(null);
+        setUserRole(null);
+        setUserId(null);
+        return;
+      }
+      // Token was set/changed: refresh user.
+      checkAuth();
     };
 
-    checkAuth();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== 'patchwork_jwt') return;
+      if (!e.newValue) {
+        setUser(null);
+        setUserRole(null);
+        setUserId(null);
+        return;
+      }
+      checkAuth();
+    };
+
+    window.addEventListener('patchwork-auth-token', onTokenEvent);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('patchwork-auth-token', onTokenEvent);
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   const login = async (token: string) => {
@@ -106,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userRole,
         userId,
         user,
-        isAuthenticated: userRole !== null,
+        isAuthenticated: !!user && !!getAuthToken(),
         isLoading,
         login,
         logout,
