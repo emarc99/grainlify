@@ -613,13 +613,7 @@ function DiscoverPage() {
       </div>
 
       {/* Body */}
-      <p
-        className={`text-[13px] leading-relaxed mb-4 line-clamp-3 ${
-          theme === 'dark' ? 'text-[#d4d4d4]' : 'text-[#7a6b5a]'
-        }`}>
-        Implement support for the latest React hooks in the library
-        with proper typings and documentation for contributors.
-      </p>
+      
 
       {/* Footer */}
       <div
