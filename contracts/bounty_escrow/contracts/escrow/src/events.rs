@@ -269,6 +269,8 @@ pub struct FundsRefunded {
     pub amount: i128,
     pub refund_to: Address,
     pub timestamp: u64,
+    pub refund_mode: crate::RefundMode,
+    pub remaining_amount: i128,
 }
 
 /// Emits a FundsRefunded event.

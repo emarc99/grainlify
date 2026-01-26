@@ -90,336 +90,9 @@
 mod events;
 mod test_bounty_escrow;
 
-use events::{
-    emit_bounty_initialized, emit_funds_locked, emit_funds_refunded, emit_funds_released,
-    BountyEscrowInitialized, FundsLocked, FundsRefunded, FundsReleased,
-};
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol,
-};
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, token, vec, Address, Env, Vec};
+use events::{BountyEscrowInitialized, FundsLocked, FundsReleased, FundsRefunded, emit_bounty_initialized, emit_funds_locked, emit_funds_released, emit_funds_refunded};
 
-// ==================== MONITORING MODULE ====================
-mod monitoring {
-    use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
-
-    // Storage keys
-    const OPERATION_COUNT: &str = "op_count";
-    const USER_COUNT: &str = "usr_count";
-    const ERROR_COUNT: &str = "err_count";
-
-    // Event: Operation metric
-    #[contracttype]
-    #[derive(Clone, Debug)]
-    pub struct OperationMetric {
-        pub operation: Symbol,
-        pub caller: Address,
-        pub timestamp: u64,
-        pub success: bool,
-    }
-
-    // Event: Performance metric
-    #[contracttype]
-    #[derive(Clone, Debug)]
-    pub struct PerformanceMetric {
-        pub function: Symbol,
-        pub duration: u64,
-        pub timestamp: u64,
-    }
-
-    // Data: Health status
-    #[contracttype]
-    #[derive(Clone, Debug)]
-    pub struct HealthStatus {
-        pub is_healthy: bool,
-        pub last_operation: u64,
-        pub total_operations: u64,
-        pub contract_version: String,
-    }
-
-    // Data: Analytics
-    #[contracttype]
-    #[derive(Clone, Debug)]
-    pub struct Analytics {
-        pub operation_count: u64,
-        pub unique_users: u64,
-        pub error_count: u64,
-        pub error_rate: u32,
-    }
-
-    // Data: State snapshot
-    #[contracttype]
-    #[derive(Clone, Debug)]
-    pub struct StateSnapshot {
-        pub timestamp: u64,
-        pub total_operations: u64,
-        pub total_users: u64,
-        pub total_errors: u64,
-    }
-
-    // Data: Performance stats
-    #[contracttype]
-    #[derive(Clone, Debug)]
-    pub struct PerformanceStats {
-        pub function_name: Symbol,
-        pub call_count: u64,
-        pub total_time: u64,
-        pub avg_time: u64,
-        pub last_called: u64,
-    }
-
-    // Track operation
-    pub fn track_operation(env: &Env, operation: Symbol, caller: Address, success: bool) {
-        let key = Symbol::new(env, OPERATION_COUNT);
-        let count: u64 = env.storage().persistent().get(&key).unwrap_or(0);
-        env.storage().persistent().set(&key, &(count + 1));
-
-        if !success {
-            let err_key = Symbol::new(env, ERROR_COUNT);
-            let err_count: u64 = env.storage().persistent().get(&err_key).unwrap_or(0);
-            env.storage().persistent().set(&err_key, &(err_count + 1));
-        }
-
-        env.events().publish(
-            (symbol_short!("metric"), symbol_short!("op")),
-            OperationMetric {
-                operation,
-                caller,
-                timestamp: env.ledger().timestamp(),
-                success,
-            },
-        );
-    }
-
-    // Track performance
-    pub fn emit_performance(env: &Env, function: Symbol, duration: u64) {
-        let count_key = (Symbol::new(env, "perf_cnt"), function.clone());
-        let time_key = (Symbol::new(env, "perf_time"), function.clone());
-
-        let count: u64 = env.storage().persistent().get(&count_key).unwrap_or(0);
-        let total: u64 = env.storage().persistent().get(&time_key).unwrap_or(0);
-
-        env.storage().persistent().set(&count_key, &(count + 1));
-        env.storage()
-            .persistent()
-            .set(&time_key, &(total + duration));
-
-        env.events().publish(
-            (symbol_short!("metric"), symbol_short!("perf")),
-            PerformanceMetric {
-                function,
-                duration,
-                timestamp: env.ledger().timestamp(),
-            },
-        );
-    }
-
-    // Health check
-    pub fn health_check(env: &Env) -> HealthStatus {
-        let key = Symbol::new(env, OPERATION_COUNT);
-        let ops: u64 = env.storage().persistent().get(&key).unwrap_or(0);
-
-        HealthStatus {
-            is_healthy: true,
-            last_operation: env.ledger().timestamp(),
-            total_operations: ops,
-            contract_version: String::from_str(env, "1.0.0"),
-        }
-    }
-
-    // Get analytics
-    pub fn get_analytics(env: &Env) -> Analytics {
-        let op_key = Symbol::new(env, OPERATION_COUNT);
-        let usr_key = Symbol::new(env, USER_COUNT);
-        let err_key = Symbol::new(env, ERROR_COUNT);
-
-        let ops: u64 = env.storage().persistent().get(&op_key).unwrap_or(0);
-        let users: u64 = env.storage().persistent().get(&usr_key).unwrap_or(0);
-        let errors: u64 = env.storage().persistent().get(&err_key).unwrap_or(0);
-
-        let error_rate = if ops > 0 {
-            ((errors as u128 * 10000) / ops as u128) as u32
-        } else {
-            0
-        };
-
-        Analytics {
-            operation_count: ops,
-            unique_users: users,
-            error_count: errors,
-            error_rate,
-        }
-    }
-
-    // Get state snapshot
-    pub fn get_state_snapshot(env: &Env) -> StateSnapshot {
-        let op_key = Symbol::new(env, OPERATION_COUNT);
-        let usr_key = Symbol::new(env, USER_COUNT);
-        let err_key = Symbol::new(env, ERROR_COUNT);
-
-        StateSnapshot {
-            timestamp: env.ledger().timestamp(),
-            total_operations: env.storage().persistent().get(&op_key).unwrap_or(0),
-            total_users: env.storage().persistent().get(&usr_key).unwrap_or(0),
-            total_errors: env.storage().persistent().get(&err_key).unwrap_or(0),
-        }
-    }
-
-    // Get performance stats
-    pub fn get_performance_stats(env: &Env, function_name: Symbol) -> PerformanceStats {
-        let count_key = (Symbol::new(env, "perf_cnt"), function_name.clone());
-        let time_key = (Symbol::new(env, "perf_time"), function_name.clone());
-        let last_key = (Symbol::new(env, "perf_last"), function_name.clone());
-
-        let count: u64 = env.storage().persistent().get(&count_key).unwrap_or(0);
-        let total: u64 = env.storage().persistent().get(&time_key).unwrap_or(0);
-        let last: u64 = env.storage().persistent().get(&last_key).unwrap_or(0);
-
-        let avg = if count > 0 { total / count } else { 0 };
-
-        PerformanceStats {
-            function_name,
-            call_count: count,
-            total_time: total,
-            avg_time: avg,
-            last_called: last,
-        }
-    }
-}
-// ==================== END MONITORING MODULE ====================
-
-// ==================== ANTI-ABUSE MODULE ====================
-mod anti_abuse {
-    use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
-
-    #[contracttype]
-    #[derive(Clone, Debug, Eq, PartialEq)]
-    pub struct AntiAbuseConfig {
-        pub window_size: u64,      // Window size in seconds
-        pub max_operations: u32,   // Max operations allowed in window
-        pub cooldown_period: u64, // Minimum seconds between operations
-    }
-
-    #[contracttype]
-    #[derive(Clone, Debug, Eq, PartialEq)]
-    pub struct AddressState {
-        pub last_operation_timestamp: u64,
-        pub window_start_timestamp: u64,
-        pub operation_count: u32,
-    }
-
-    #[contracttype]
-    #[derive(Clone, Debug, Eq, PartialEq)]
-    pub enum AntiAbuseKey {
-        Config,
-        State(Address),
-        Whitelist(Address),
-    }
-
-    pub fn get_config(env: &Env) -> AntiAbuseConfig {
-        env.storage()
-            .instance()
-            .get(&AntiAbuseKey::Config)
-            .unwrap_or(AntiAbuseConfig {
-                window_size: 3600, // 1 hour default
-                max_operations: 10,
-                cooldown_period: 60, // 1 minute default
-            })
-    }
-
-    pub fn set_config(env: &Env, config: AntiAbuseConfig) {
-        env.storage().instance().set(&AntiAbuseKey::Config, &config);
-    }
-
-    pub fn is_whitelisted(env: &Env, address: Address) -> bool {
-        env.storage()
-            .instance()
-            .has(&AntiAbuseKey::Whitelist(address))
-    }
-
-    pub fn set_whitelist(env: &Env, address: Address, whitelisted: bool) {
-        if whitelisted {
-            env.storage()
-                .instance()
-                .set(&AntiAbuseKey::Whitelist(address), &true);
-        } else {
-            env.storage()
-                .instance()
-                .remove(&AntiAbuseKey::Whitelist(address));
-        }
-    }
-
-    pub fn check_rate_limit(env: &Env, address: Address) {
-        if is_whitelisted(env, address.clone()) {
-            return;
-        }
-
-        let config = get_config(env);
-        let now = env.ledger().timestamp();
-        let key = AntiAbuseKey::State(address.clone());
-
-        let mut state: AddressState = env.storage().persistent().get(&key).unwrap_or(AddressState {
-            last_operation_timestamp: 0,
-            window_start_timestamp: now,
-            operation_count: 0,
-        });
-
-        // 1. Cooldown check
-        if state.last_operation_timestamp > 0
-            && now < state.last_operation_timestamp.saturating_add(config.cooldown_period)
-        {
-            env.events().publish(
-                (symbol_short!("abuse"), symbol_short!("cooldown")),
-                (address.clone(), now),
-            );
-            panic!("Operation in cooldown period");
-        }
-
-        // 2. Window check
-        if now >= state.window_start_timestamp.saturating_add(config.window_size) {
-            // New window
-            state.window_start_timestamp = now;
-            state.operation_count = 1;
-        } else {
-            // Same window
-            if state.operation_count >= config.max_operations {
-                env.events().publish(
-                    (symbol_short!("abuse"), symbol_short!("limit")),
-                    (address.clone(), now),
-                );
-                panic!("Rate limit exceeded");
-            }
-            state.operation_count += 1;
-        }
-
-        state.last_operation_timestamp = now;
-        env.storage().persistent().set(&key, &state);
-
-        // Extend TTL for state (approx 1 day)
-        env.storage().persistent().extend_ttl(&key, 17280, 17280);
-    }
-}
-
-// ============================================================================
-// Error Definitions
-// ============================================================================
-
-/// Contract error codes for the Bounty Escrow system.
-///
-/// # Error Codes
-/// * `AlreadyInitialized (1)` - Contract has already been initialized
-/// * `NotInitialized (2)` - Contract must be initialized before use
-/// * `BountyExists (3)` - Bounty ID already has funds locked
-/// * `BountyNotFound (4)` - No escrow exists for this bounty ID
-/// * `FundsNotLocked (5)` - Funds are not in LOCKED state
-/// * `DeadlineNotPassed (6)` - Cannot refund before deadline
-/// * `Unauthorized (7)` - Caller lacks required authorization
-///
-/// # Usage in Error Handling
-/// ```rust
-/// if env.storage().instance().has(&DataKey::Admin) {
-///     return Err(Error::AlreadyInitialized);
-/// }
-/// ```
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -445,7 +118,9 @@ pub enum Error {
     /// Returned when caller lacks required authorization for the operation
     Unauthorized = 7,
     InvalidAmount = 8,
-    InvalidDeadline = 9,
+    RefundNotApproved = 9,
+    RefundAlreadyProcessed = 10,
+    InsufficientFunds = 11,
 }
 
 // ============================================================================
@@ -475,6 +150,35 @@ pub enum EscrowStatus {
     Locked,
     Released,
     Refunded,
+    PartiallyRefunded,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RefundMode {
+    Full,
+    Partial,
+    Custom,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RefundRecord {
+    pub amount: i128,
+    pub recipient: Address,
+    pub mode: RefundMode,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RefundApproval {
+    pub bounty_id: u64,
+    pub amount: i128,
+    pub recipient: Address,
+    pub mode: RefundMode,
+    pub approved_by: Address,
+    pub approved_at: u64,
 }
 
 /// Complete escrow record for a bounty.
@@ -505,6 +209,8 @@ pub struct Escrow {
     pub amount: i128,
     pub status: EscrowStatus,
     pub deadline: u64,
+    pub refund_history: Vec<RefundRecord>,
+    pub remaining_amount: i128,
 }
 
 /// Storage keys for contract data.
@@ -522,7 +228,7 @@ pub enum DataKey {
     Admin,
     Token,
     Escrow(u64), // bounty_id
-    ReentrancyGuard,
+    RefundApproval(u64), // bounty_id -> RefundApproval
 }
 
 // ============================================================================
@@ -724,6 +430,8 @@ impl BountyEscrowContract {
             amount,
             status: EscrowStatus::Locked,
             deadline,
+            refund_history: vec![&env],
+            remaining_amount: amount,
         };
 
         // Store in persistent storage with extended TTL
@@ -886,84 +594,61 @@ impl BountyEscrowContract {
         Ok(())
     }
 
-    /// Refunds escrowed funds to the depositor after deadline expiration.
-    ///
-    /// # Arguments
-    /// * `env` - The contract environment
-    /// * `bounty_id` - The bounty to refund
-    ///
-    /// # Returns
-    /// * `Ok(())` - Funds successfully refunded
-    /// * `Err(Error::BountyNotFound)` - Bounty doesn't exist
-    /// * `Err(Error::FundsNotLocked)` - Funds not in LOCKED state
-    /// * `Err(Error::DeadlineNotPassed)` - Current time before deadline
-    ///
-    /// # State Changes
-    /// - Transfers tokens from contract back to depositor
-    /// - Updates escrow status to Refunded
-    /// - Emits FundsRefunded event
-    ///
-    /// # Authorization
-    /// - **Permissionless**: Anyone can trigger refund after deadline
-    /// - No authorization required (time-based protection)
-    ///
-    /// # Security Considerations
-    /// - Deadline enforcement prevents premature refunds
-    /// - Permissionless design ensures funds aren't stuck
-    /// - Original depositor always receives refund (prevents theft)
-    /// - State check prevents double-refund
-    ///
-    /// # Design Rationale
-    /// This function is intentionally permissionless to ensure:
-    /// 1. Depositors can always recover funds after deadline
-    /// 2. No dependency on admin availability
-    /// 3. Trustless, predictable behavior
-    /// 4. Protection against key loss scenarios
-    ///
-    /// # Events
-    /// Emits: `FundsRefunded { bounty_id, amount, refund_to, timestamp }`
-    ///
-    /// # Example
-    /// ```rust
-    /// // Deadline was January 1, 2025
-    /// // Current time: January 15, 2025
-    ///
-    /// // Anyone can call refund now
-    /// escrow_client.refund(&42)?;
-    /// // Funds returned to original depositor
-    /// ```
-    ///
-    /// # Gas Cost
-    /// Medium - Token transfer + storage update + event emission
-    ///
-    /// # Time Calculations
-    /// ```rust
-    /// // Set deadline for 30 days from now
-    /// let deadline = env.ledger().timestamp() + (30 * 24 * 60 * 60);
-    ///
-    /// // After deadline passes, refund becomes available
-    /// // Current time must be > deadline
-    /// ```
-    pub fn refund(env: Env, bounty_id: u64) -> Result<(), Error> {
-        // Apply rate limiting to the caller (permissionless, but still trackable)
-        anti_abuse::check_rate_limit(&env, env.current_contract_address());
-
-        let start = env.ledger().timestamp();
-
-        if env.storage().instance().has(&DataKey::ReentrancyGuard) {
-            panic!("Reentrancy detected");
+    /// Approve a refund before deadline (admin only).
+    /// This allows early refunds with admin approval.
+    pub fn approve_refund(
+        env: Env,
+        bounty_id: u64,
+        amount: i128,
+        recipient: Address,
+        mode: RefundMode,
+    ) -> Result<(), Error> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            return Err(Error::NotInitialized);
         }
-        env.storage()
-            .instance()
-            .set(&DataKey::ReentrancyGuard, &true);
 
-        // We'll allow anyone to trigger the refund if conditions are met,
-        // effectively making it permissionless but conditional.
-        // OR we can require depositor auth. Let's make it permissionless to ensure funds aren't stuck if depositor key is lost,
-        // but strictly logic bound.
-        // However, usually refund is triggered by depositor. Let's stick to logic.
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
 
-        // Verify bounty exists
+        if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
+            return Err(Error::BountyNotFound);
+        }
+
+        let escrow: Escrow = env.storage().persistent().get(&DataKey::Escrow(bounty_id)).unwrap();
+
+        if escrow.status != EscrowStatus::Locked && escrow.status != EscrowStatus::PartiallyRefunded {
+            return Err(Error::FundsNotLocked);
+        }
+
+        if amount <= 0 || amount > escrow.remaining_amount {
+            return Err(Error::InvalidAmount);
+        }
+
+        let approval = RefundApproval {
+            bounty_id,
+            amount,
+            recipient: recipient.clone(),
+            mode: mode.clone(),
+            approved_by: admin.clone(),
+            approved_at: env.ledger().timestamp(),
+        };
+
+        env.storage().persistent().set(&DataKey::RefundApproval(bounty_id), &approval);
+
+        Ok(())
+    }
+
+    /// Refund funds with support for Full, Partial, and Custom refunds.
+    /// - Full: refunds all remaining funds to depositor
+    /// - Partial: refunds specified amount to depositor
+    /// - Custom: refunds specified amount to specified recipient (requires admin approval if before deadline)
+    pub fn refund(
+        env: Env,
+        bounty_id: u64,
+        amount: Option<i128>,
+        recipient: Option<Address>,
+        mode: RefundMode,
+    ) -> Result<(), Error> {
         if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
             let caller = env.current_contract_address();
             monitoring::track_operation(&env, symbol_short!("refund"), caller, false);
@@ -979,43 +664,109 @@ impl BountyEscrowContract {
             .unwrap();
         let caller = escrow.depositor.clone();
 
-        if escrow.status != EscrowStatus::Locked {
-            monitoring::track_operation(&env, symbol_short!("refund"), caller, false);
-            env.storage().instance().remove(&DataKey::ReentrancyGuard);
+        if escrow.status != EscrowStatus::Locked && escrow.status != EscrowStatus::PartiallyRefunded {
             return Err(Error::FundsNotLocked);
         }
 
         // Verify deadline has passed
         let now = env.ledger().timestamp();
-        if now < escrow.deadline {
-            monitoring::track_operation(&env, symbol_short!("refund"), caller, false);
-            env.storage().instance().remove(&DataKey::ReentrancyGuard);
-            return Err(Error::DeadlineNotPassed);
+        let is_before_deadline = now < escrow.deadline;
+
+        // Determine refund amount and recipient
+        let refund_amount: i128;
+        let refund_recipient: Address;
+
+        match mode {
+            RefundMode::Full => {
+                refund_amount = escrow.remaining_amount;
+                refund_recipient = escrow.depositor.clone();
+                if is_before_deadline {
+                    return Err(Error::DeadlineNotPassed);
+                }
+            }
+            RefundMode::Partial => {
+                refund_amount = amount.unwrap_or(escrow.remaining_amount);
+                refund_recipient = escrow.depositor.clone();
+                if is_before_deadline {
+                    return Err(Error::DeadlineNotPassed);
+                }
+            }
+            RefundMode::Custom => {
+                refund_amount = amount.ok_or(Error::InvalidAmount)?;
+                refund_recipient = recipient.ok_or(Error::InvalidAmount)?;
+                
+                // Custom refunds before deadline require admin approval
+                if is_before_deadline {
+                    if !env.storage().persistent().has(&DataKey::RefundApproval(bounty_id)) {
+                        return Err(Error::RefundNotApproved);
+                    }
+                    let approval: RefundApproval = env.storage()
+                        .persistent()
+                        .get(&DataKey::RefundApproval(bounty_id))
+                        .unwrap();
+                    
+                    // Verify approval matches request
+                    if approval.amount != refund_amount 
+                        || approval.recipient != refund_recipient 
+                        || approval.mode != mode {
+                        return Err(Error::RefundNotApproved);
+                    }
+                    
+                    // Clear approval after use
+                    env.storage().persistent().remove(&DataKey::RefundApproval(bounty_id));
+                }
+            }
+        }
+
+        // Validate amount
+        if refund_amount <= 0 || refund_amount > escrow.remaining_amount {
+            return Err(Error::InvalidAmount);
         }
 
         // Transfer funds back to depositor
         let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
-        escrow.status = EscrowStatus::Refunded;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Escrow(bounty_id), &escrow);
 
-        // Transfer funds back to depositor
-        client.transfer(
-            &env.current_contract_address(),
-            &escrow.depositor,
-            &escrow.amount,
-        );
+        // Check contract balance
+        let contract_balance = client.balance(&env.current_contract_address());
+        if contract_balance < refund_amount {
+            return Err(Error::InsufficientFunds);
+        }
+
+        // Transfer funds
+        client.transfer(&env.current_contract_address(), &refund_recipient, &refund_amount);
+
+        // Update escrow state
+        escrow.remaining_amount -= refund_amount;
+        
+        // Add to refund history
+        let refund_record = RefundRecord {
+            amount: refund_amount,
+            recipient: refund_recipient.clone(),
+            mode: mode.clone(),
+            timestamp: env.ledger().timestamp(),
+        };
+        escrow.refund_history.push_back(refund_record);
+
+        // Update status
+        if escrow.remaining_amount == 0 {
+            escrow.status = EscrowStatus::Refunded;
+        } else {
+            escrow.status = EscrowStatus::PartiallyRefunded;
+        }
+
+        env.storage().persistent().set(&DataKey::Escrow(bounty_id), &escrow);
 
         // Emit refund event
         emit_funds_refunded(
             &env,
             FundsRefunded {
                 bounty_id,
-                amount: escrow.amount,
-                refund_to: escrow.depositor.clone(),
+                amount: refund_amount,
+                refund_to: refund_recipient,
                 timestamp: env.ledger().timestamp(),
+                refund_mode: mode.clone(),
+                remaining_amount: escrow.remaining_amount,
             },
         );
 
@@ -1097,29 +848,37 @@ impl BountyEscrowContract {
         Ok(client.balance(&env.current_contract_address()))
     }
 
-    // ========================================================================
-    // Monitoring & Analytics Functions
-    // ========================================================================
+    /// Get refund eligibility information for a bounty
+    pub fn get_refund_eligibility(env: Env, bounty_id: u64) -> Result<(bool, bool, i128, Option<RefundApproval>), Error> {
+        if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
+            return Err(Error::BountyNotFound);
+        }
 
-    /// Health check - returns contract health status
-    pub fn health_check(env: Env) -> monitoring::HealthStatus {
-        monitoring::health_check(&env)
+        let escrow: Escrow = env.storage().persistent().get(&DataKey::Escrow(bounty_id)).unwrap();
+        
+        let now = env.ledger().timestamp();
+        let deadline_passed = now >= escrow.deadline;
+        let has_approval = env.storage().persistent().has(&DataKey::RefundApproval(bounty_id));
+        
+        let approval: Option<RefundApproval> = if has_approval {
+            Some(env.storage().persistent().get(&DataKey::RefundApproval(bounty_id)).unwrap())
+        } else {
+            None
+        };
+
+        let can_refund = deadline_passed || has_approval;
+        
+        Ok((can_refund, deadline_passed, escrow.remaining_amount, approval))
     }
 
-    /// Get analytics - returns usage analytics
-    pub fn get_analytics(env: Env) -> monitoring::Analytics {
-        monitoring::get_analytics(&env)
-    }
+    /// Get refund history for a bounty
+    pub fn get_refund_history(env: Env, bounty_id: u64) -> Result<Vec<RefundRecord>, Error> {
+        if !env.storage().persistent().has(&DataKey::Escrow(bounty_id)) {
+            return Err(Error::BountyNotFound);
+        }
 
-    /// Get state snapshot - returns current state
-    pub fn get_state_snapshot(env: Env) -> monitoring::StateSnapshot {
-        monitoring::get_state_snapshot(&env)
-    }
-
-    /// Get performance stats for a function
-    /// Get performance stats for a function
-    pub fn get_performance_stats(env: Env, function_name: Symbol) -> monitoring::PerformanceStats {
-        monitoring::get_performance_stats(&env, function_name)
+        let escrow: Escrow = env.storage().persistent().get(&DataKey::Escrow(bounty_id)).unwrap();
+        Ok(escrow.refund_history)
     }
 
     // ========================================================================
