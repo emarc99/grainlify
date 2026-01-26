@@ -20,19 +20,21 @@ export function SignInPage() {
     }
   }, [navigate]);
 
-  const handleGitHubSignIn = () => {
-    if (isRedirecting) return;
-    setIsRedirecting(true);
-    console.log('Sign in button clicked');
-    try {
-          // This is the correct "Internal Door"
-              navigate('/auth/callback?token=unauthorized_test'); 
-                } catch (err) {
-                    // If it fails, we UNLOCK the button so the user can try again
-                        setIsRedirecting(false); 
-                            console.error("Navigation failed:", err);
-                              }
-    }
+  const handleGithubSign = async () => {
+        setLoading(true);
+            try {
+                    const provider = new GithubAuthProvider();
+                            console.log("sign in false ",false)
+                                    const github1 = await signInWithPopup(auth, provider);
+                                            console.log("Redirecting to :", github1);
+                                                    // subject to github login
+                                                            window.location.href = github1;
+
+                                                                } catch (error) {
+                                                                        console.log(error);
+                                                                            }
+                                                                            };
+
   
 
   return (

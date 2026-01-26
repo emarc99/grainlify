@@ -112,6 +112,7 @@ export function BillingTab() {
       // Open the KYC URL in a new window
       if (response.url) {
         window.open(response.url, '_blank', 'width=800,height=600');
+        setErrorMessage("");
         
         // Poll for status updates
         const pollInterval = setInterval(async () => {
@@ -131,6 +132,7 @@ export function BillingTab() {
             }
           } catch (error) {
             console.error('Failed to poll KYC status:', error);
+            setErrorMessage("Connection lost. We're having trouble checking your verification status. Please refresh the page.");
           }
         }, 3000); // Poll every 3 seconds
 
@@ -142,6 +144,7 @@ export function BillingTab() {
       }
     } catch (error) {
       console.error('Failed to start KYC verification:', error);
+      setErrorMessage("Could not start verification. Please try again later.");
       setIsVerifying(false);
     }
   };
@@ -218,7 +221,7 @@ export function BillingTab() {
                               </div>
                                   )}
                                   
-        )}
+        )
         {/* Back Button */}
         <button
           onClick={() => setSelectedProfile(null)}

@@ -27,27 +27,9 @@ export function AuthCallbackPage() {
     
     const handleCallback = async () => {
       hasProcessed.current = true;
-
-
-
-          try {
-                  const params = new URLSearchParams(window.location.search);
-                          const token = params.get('token');
-                                  const errorParam = params.get('error');
-
-                                          // --- ROBUST ERROR HANDLING (ISSUE #9) ---
-                                                  if (token === 'unauthorized_test') {
-                                                              setError("Unauthorized: Access denied."); // Custom Error Type
-                                                                          setIsProcessing(false);
-                                                                                      return;
-                                                                                              }
-
-                                                                                                      if (token === 'insufficient_test') {
-                                                                                                                  setError("InsufficientBalance: Wallet check failed."); // Custom Error Type
-                                                                                                                              setIsProcessing(false);
-                                                                                                                                          return;
-                                                                                                                                                  }
-          }
+                                                                                                
+                                                                                                                                                  
+          
 
                                                                                                                                                             
                                                                                                                                           
@@ -64,9 +46,7 @@ export function AuthCallbackPage() {
                                                                                                                                                                                                                                                           
                                                                                                                                                                                                                                                                 
                                                                                                                                                                                                                                                                     
-                                                                                                                                                                                                                                                                                              
-                                                                                                                                                                                                                                              
-                                                                                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
                                                                                                                                                                                                                                                                                           
                                                                                                                                                                                                                                                                                             
                                                                      
@@ -74,7 +54,7 @@ export function AuthCallbackPage() {
                                                                                                                                         
                                                             
       
- /*    try {
+  try {
         // Get the token from URL parameters
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
@@ -114,7 +94,7 @@ export function AuthCallbackPage() {
         console.log('Login successful! Auth state should update shortly...');
         setIsProcessing(false);
         // The redirect will happen via the useEffect watching isAuthenticated
-      }  */ catch (err) {
+      } catch (err) {
         console.error('Authentication failed:', err);
         setError(err instanceof Error ? err.message : 'Authentication failed');
         setIsProcessing(false);

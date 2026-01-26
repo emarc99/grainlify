@@ -45,6 +45,12 @@ export function PayoutTab() {
   };
 
   const handleSave = () => {
+     // --- VALIDATION FOR ISSUE #9 ---
+       // If the logic involves an amount, check it here
+         if (amount <= 0) {
+             alert("InvalidAmount: Amount must be greater than zero"); //
+                 return; 
+                   }
     // TODO: Implement save to backend
     console.log('Saving payout preferences:', projectMappings);
   };
