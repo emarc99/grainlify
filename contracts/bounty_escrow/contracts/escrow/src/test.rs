@@ -1,13 +1,19 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, token};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    token, Address, Env,
+};
 
-fn create_token_contract<'a>(e: &Env, admin: &Address) -> (token::Client<'a>, token::StellarAssetClient<'a>) {
+fn create_token_contract<'a>(
+    e: &Env,
+    admin: &Address,
+) -> (token::Client<'a>, token::StellarAssetClient<'a>) {
     let contract_address = e.register_stellar_asset_contract(admin.clone());
     (
         token::Client::new(e, &contract_address),
-        token::StellarAssetClient::new(e, &contract_address)
+        token::StellarAssetClient::new(e, &contract_address),
     )
 }
 
@@ -63,7 +69,9 @@ fn test_lock_funds_success() {
     let deadline = setup.env.ledger().timestamp() + 1000;
 
     // Lock funds
-    setup.escrow.lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
 
     // Verify stored escrow data
     let stored_escrow = setup.escrow.get_escrow_info(&bounty_id);
@@ -84,10 +92,14 @@ fn test_lock_funds_duplicate() {
     let amount = 1000;
     let deadline = setup.env.ledger().timestamp() + 1000;
 
-    setup.escrow.lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
-    
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+
     // Try to lock again with same bounty_id
-    setup.escrow.lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
 }
 
 #[test]
@@ -98,7 +110,9 @@ fn test_lock_funds_negative_amount() {
     let amount = -100;
     let deadline = setup.env.ledger().timestamp() + 1000;
 
-    setup.escrow.lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
 }
 
 #[test]
@@ -108,7 +122,9 @@ fn test_get_escrow_info() {
     let amount = 1000;
     let deadline = setup.env.ledger().timestamp() + 1000;
 
-    setup.escrow.lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
 
     let escrow = setup.escrow.get_escrow_info(&bounty_id);
     assert_eq!(escrow.amount, amount);
@@ -124,7 +140,9 @@ fn test_release_funds_success() {
     let amount = 1000;
     let deadline = setup.env.ledger().timestamp() + 1000;
 
-    setup.escrow.lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
 
     // Verify initial balances
     assert_eq!(setup.token.balance(&setup.escrow.address), amount);
@@ -150,7 +168,9 @@ fn test_release_funds_already_released() {
     let amount = 1000;
     let deadline = setup.env.ledger().timestamp() + 1000;
 
-    setup.escrow.lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
     setup.escrow.release_funds(&bounty_id, &setup.contributor);
 
     // Try to release again
@@ -173,7 +193,9 @@ fn test_refund_success() {
     let current_time = setup.env.ledger().timestamp();
     let deadline = current_time + 1000;
 
-    setup.escrow.lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
 
     // Advance time past deadline
     setup.env.ledger().set_timestamp(deadline + 1);
@@ -190,7 +212,10 @@ fn test_refund_success() {
 
     // Verify balances
     assert_eq!(setup.token.balance(&setup.escrow.address), 0);
-    assert_eq!(setup.token.balance(&setup.depositor), initial_depositor_balance + amount);
+    assert_eq!(
+        setup.token.balance(&setup.depositor),
+        initial_depositor_balance + amount
+    );
 }
 
 #[test]
@@ -202,7 +227,9 @@ fn test_refund_too_early() {
     let current_time = setup.env.ledger().timestamp();
     let deadline = current_time + 1000;
 
-    setup.escrow.lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
 
     // Attempt refund before deadline
     setup.escrow.refund(&bounty_id);
@@ -218,8 +245,63 @@ fn test_get_balance() {
     // Initial balance should be 0
     assert_eq!(setup.escrow.get_balance(), 0);
 
-    setup.escrow.lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &bounty_id, &amount, &deadline);
 
     // Balance should be updated
     assert_eq!(setup.escrow.get_balance(), amount);
+}
+
+// ========================================================================
+// Anti-Abuse Tests
+// ========================================================================
+
+#[test]
+#[should_panic(expected = "Operation in cooldown period")]
+fn test_anti_abuse_cooldown_panic() {
+    let setup = TestSetup::new();
+    setup.env.ledger().set_timestamp(1000);
+    
+    // Default cooldown is 60s
+    setup.escrow.lock_funds(&setup.depositor, &1, &100, &2000);
+    
+    setup.env.ledger().set_timestamp(1030); // 30s < 60s
+    setup.escrow.lock_funds(&setup.depositor, &2, &100, &2000); // Should panic
+}
+
+#[test]
+#[should_panic(expected = "Rate limit exceeded")]
+fn test_anti_abuse_limit_panic() {
+    let setup = TestSetup::new();
+    setup.env.ledger().set_timestamp(1000);
+    
+    setup.escrow.update_rate_limit_config(&3600, &1, &0); // 1 op max
+    
+    setup.escrow.lock_funds(&setup.depositor, &1, &100, &2000);
+    setup.escrow.lock_funds(&setup.depositor, &2, &100, &2000); // Should panic
+}
+
+#[test]
+fn test_anti_abuse_whitelist() {
+    let setup = TestSetup::new();
+    setup.env.ledger().set_timestamp(1000);
+    
+    setup.escrow.update_rate_limit_config(&3600, &1, &60); // 1 op max
+    
+    setup.escrow.set_whitelist(&setup.depositor, &true);
+    
+    setup.escrow.lock_funds(&setup.depositor, &1, &100, &2000);
+    setup.escrow.lock_funds(&setup.depositor, &2, &100, &2000); // Works because whitelisted
+}
+
+#[test]
+fn test_anti_abuse_config_update() {
+    let setup = TestSetup::new();
+    setup.escrow.update_rate_limit_config(&7200, &5, &120);
+    
+    let config = setup.escrow.get_rate_limit_config();
+    assert_eq!(config.window_size, 7200);
+    assert_eq!(config.max_operations, 5);
+    assert_eq!(config.cooldown_period, 120);
 }
