@@ -31,6 +31,7 @@ import {
   X,
   Menu
 } from "lucide-react";
+import { useModeAnimation } from "react-theme-switch-animation";
 import { useAuth } from "../../shared/contexts/AuthContext";
 import grainlifyLogo from "../../assets/grainlify_log.svg";
 import { useTheme } from "../../shared/contexts/ThemeContext";
@@ -66,7 +67,11 @@ import { SettingsTabType } from "../settings/types";
 
 export function Dashboard() {
   const { userRole, logout, login } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, setThemeFromAnimation } = useTheme();
+  const { ref: themeToggleRef, toggleSwitchTheme } = useModeAnimation({
+    isDarkMode: theme === "dark",
+    onDarkModeChange: (isDark) => setThemeFromAnimation(isDark),
+  });
   const navigate = useNavigate();
   // const [currentPage, setCurrentPage] = useState('discover');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
@@ -582,11 +587,12 @@ export function Dashboard() {
               onRoleChange={handleRoleChange}
             />
 
-            {/* Theme Toggle - Separate Pill Button */}
+            {/* Theme Toggle - Separate Pill Button (animated) */}
             <button
+              ref={themeToggleRef}
               onClick={() => {
-               toggleTheme()
-               closeMobileNav(); 
+                toggleSwitchTheme();
+                closeMobileNav();
               }}
               className={`h-[46px] lg:w-[46px]  overflow-clip relative items-center justify-center backdrop-blur-[40px] transition-all hover:scale-105 shadow-[0px_6px_6.5px_-1px_rgba(0,0,0,0.36),0px_0px_4.2px_0px_rgba(0,0,0,0.69)] ${
                 darkTheme ? "bg-[#2d2820] text-[#e8dfd0]" : "bg-[#d4c5b0] text-[#2d2820]"

@@ -1,11 +1,16 @@
 import { useState } from 'react';
 import { ChevronDown, Info, Sun, Moon } from 'lucide-react';
+import { useModeAnimation } from 'react-theme-switch-animation';
 import { BarChart, Bar, LineChart, Line as RechartsLine, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart } from 'recharts';
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup, Line as MapLine } from "react-simple-maps";
 import { useTheme } from '../../../shared/contexts/ThemeContext';
 
 export function DataPage() {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, setThemeFromAnimation } = useTheme();
+  const { ref: themeToggleRef, toggleSwitchTheme } = useModeAnimation({
+    isDarkMode: theme === 'dark',
+    onDarkModeChange: (isDark) => setThemeFromAnimation(isDark),
+  });
   const [mapZoom, setMapZoom] = useState(1);
   const [mapCenter, setMapCenter] = useState<[number, number]>([0, 0]);
 
@@ -166,7 +171,10 @@ export function DataPage() {
             DataPage
           </h1>
           <button
-            onClick={toggleTheme}
+            ref={themeToggleRef}
+            onClick={() => {
+              toggleSwitchTheme();
+            }}
             className={`p-2 rounded-full transition-colors ${
               theme === 'dark'
                 ? 'bg-white/[0.1] hover:bg-white/[0.2] text-white'
