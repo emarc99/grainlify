@@ -13,7 +13,6 @@ interface NewProjectSetupModalProps {
   project: PendingSetupProject | null;
   onClose: () => void;
   onSuccess: () => void;
-  onSkip?: () => void;
 }
 
 export function NewProjectSetupModal({
@@ -21,7 +20,6 @@ export function NewProjectSetupModal({
   project,
   onClose,
   onSuccess,
-  onSkip,
 }: NewProjectSetupModalProps) {
   const { theme } = useTheme();
   const darkTheme = theme === 'dark';
@@ -107,15 +105,6 @@ export function NewProjectSetupModal({
       setError(err instanceof Error ? err.message : 'Failed to save project details');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleSkip = () => {
-    if (onSkip) {
-      onSkip();
-      onClose();
-    } else {
-      onClose();
     }
   };
 
@@ -325,20 +314,6 @@ export function NewProjectSetupModal({
           </div>
 
           <div className="flex items-center gap-3 pt-2">
-            {onSkip && (
-              <button
-                type="button"
-                onClick={handleSkip}
-                disabled={isSubmitting}
-                className={`flex-1 px-5 py-3 rounded-[12px] border-2 font-semibold text-[14px] transition-all ${
-                  darkTheme
-                    ? 'bg-white/10 border-white/20 text-[#e8dfd0] hover:bg-white/15'
-                    : 'bg-white/40 border-white/50 text-[#2d2820] hover:bg-white/60'
-                } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                Skip for now
-              </button>
-            )}
             <button
               type="submit"
               disabled={isSubmitting || success}

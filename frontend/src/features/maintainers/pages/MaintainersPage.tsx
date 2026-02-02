@@ -50,6 +50,10 @@ export function MaintainersPage({ onNavigate }: MaintainersPageProps) {
   const [targetIssueId, setTargetIssueId] = useState<string | undefined>(undefined);
   const [targetProjectId, setTargetProjectId] = useState<string | undefined>(undefined);
   const [pendingSetupProjects, setPendingSetupProjects] = useState<PendingSetupProject[]>([]);
+  /** Only true when user landed from GitHub App install redirect (URL had github_app_installed=true). */
+  const [showNewProjectModalFromRedirect, setShowNewProjectModalFromRedirect] = useState(false);
+  /** True when user clicked "Complete setup" in repo dropdown to open the modal. */
+  const [userOpenedModalForSetup, setUserOpenedModalForSetup] = useState(false);
 
   useEffect(() => {
   if (projects && projects.length > 0) {
@@ -81,20 +85,22 @@ export function MaintainersPage({ onNavigate }: MaintainersPageProps) {
 
   // Fetch projects from API
   useEffect(() => {
-    loadProjects();
-    loadPendingSetup();
-
-    // Check if we're returning from GitHub App installation
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('github_app_installed') === 'true') {
+    const fromGitHubInstall = urlParams.get('github_app_installed') === 'true';
+
+    if (fromGitHubInstall) {
+      setShowNewProjectModalFromRedirect(true);
+      window.history.replaceState({}, '', window.location.pathname);
       // Refresh projects and pending setup after a delay to allow backend sync
       const t = setTimeout(() => {
         loadProjects();
         loadPendingSetup();
       }, 2500);
-      window.history.replaceState({}, '', window.location.pathname);
       return () => clearTimeout(t);
     }
+
+    loadProjects();
+    loadPendingSetup();
   }, []);
 
   // Expose refresh function for child components
@@ -207,18 +213,20 @@ export function MaintainersPage({ onNavigate }: MaintainersPageProps) {
   };
 
   const currentPendingProject = pendingSetupProjects[0] ?? null;
-  const isNewProjectSetupOpen = currentPendingProject !== null;
+  // Only auto-show modal after GitHub App install redirect, or when user clicked "Complete setup"
+  const isNewProjectSetupOpen =
+    currentPendingProject !== null && (showNewProjectModalFromRedirect || userOpenedModalForSetup);
 
   const handleNewProjectSetupSuccess = () => {
+    setShowNewProjectModalFromRedirect(false);
+    setUserOpenedModalForSetup(false);
     loadProjects();
     setPendingSetupProjects((prev) => prev.slice(1));
   };
 
-  const handleNewProjectSetupSkip = () => {
-    setPendingSetupProjects((prev) => prev.slice(1));
-  };
-
   const handleNewProjectSetupClose = () => {
+    setShowNewProjectModalFromRedirect(false);
+    setUserOpenedModalForSetup(false);
     setPendingSetupProjects((prev) => prev.slice(1));
   };
 
@@ -228,6 +236,7 @@ export function MaintainersPage({ onNavigate }: MaintainersPageProps) {
       const found = pending.find((p) => p.id === projectId);
       if (found) {
         setPendingSetupProjects([found, ...pending.filter((p) => p.id !== projectId)]);
+        setUserOpenedModalForSetup(true);
       }
     } catch {
       setPendingSetupProjects((prev) => prev);
@@ -496,7 +505,6 @@ export function MaintainersPage({ onNavigate }: MaintainersPageProps) {
         project={currentPendingProject}
         onClose={handleNewProjectSetupClose}
         onSuccess={handleNewProjectSetupSuccess}
-        onSkip={handleNewProjectSetupSkip}
       />
     </div>
   );
