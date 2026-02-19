@@ -102,6 +102,7 @@ jobs:
 
       - name: Run script tests
         run: |
-          chmod +x contracts/scripts/*.sh
+          chmod +x contracts/scripts/test_*.sh
           contracts/scripts/test_deploy_failures.sh
           contracts/scripts/test_upgrade_failures.sh
+
