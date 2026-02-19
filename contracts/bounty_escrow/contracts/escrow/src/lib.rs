@@ -640,8 +640,8 @@ pub enum DataKey {
     ReentrancyGuard,
     MultisigConfig,
     ReleaseApproval(u64), // bounty_id -> ReleaseApproval
-    PendingClaim(u64), // bounty_id -> ClaimRecord
-    ClaimWindow,       // u64 seconds (global config)
+    PendingClaim(u64),    // bounty_id -> ClaimRecord
+    ClaimWindow,          // u64 seconds (global config)
 }
 
 // ============================================================================
@@ -892,7 +892,7 @@ impl BountyEscrowContract {
         }
 
         let multisig_config: MultisigConfig = Self::get_multisig_config(env.clone());
-        
+
         let mut is_signer = false;
         for signer in multisig_config.signers.iter() {
             if signer == approver {
@@ -900,7 +900,7 @@ impl BountyEscrowContract {
                 break;
             }
         }
-        
+
         if !is_signer {
             return Err(Error::Unauthorized);
         }
@@ -1207,27 +1207,25 @@ impl BountyEscrowContract {
 
         // Check if multisig approval is required
         let multisig_config: MultisigConfig = Self::get_multisig_config(env.clone());
-        
-        if escrow.amount >= multisig_config.threshold_amount && multisig_config.required_signatures > 0 {
+
+        if escrow.amount >= multisig_config.threshold_amount
+            && multisig_config.required_signatures > 0
+        {
             // Large release - requires multisig approval
             let approval_key = DataKey::ReleaseApproval(bounty_id);
-            
+
             if !env.storage().persistent().has(&approval_key) {
                 env.storage().instance().remove(&DataKey::ReentrancyGuard);
                 return Err(Error::Unauthorized);
             }
-            
-            let approval: ReleaseApproval = env
-                .storage()
-                .persistent()
-                .get(&approval_key)
-                .unwrap();
-            
+
+            let approval: ReleaseApproval = env.storage().persistent().get(&approval_key).unwrap();
+
             if approval.approvals.len() < multisig_config.required_signatures {
                 env.storage().instance().remove(&DataKey::ReentrancyGuard);
                 return Err(Error::Unauthorized);
             }
-            
+
             // Clear approval after use
             env.storage().persistent().remove(&approval_key);
         } else {

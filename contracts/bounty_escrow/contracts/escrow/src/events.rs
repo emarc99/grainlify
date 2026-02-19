@@ -362,6 +362,9 @@ pub struct ApprovalAdded {
 pub fn emit_approval_added(env: &Env, event: ApprovalAdded) {
     let topics = (symbol_short!("approval"), event.bounty_id);
     env.events().publish(topics, event.clone());
+}
+
+#[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClaimCreated {
     pub bounty_id: u64, // use program_id+schedule_id equivalent in program-escrow
