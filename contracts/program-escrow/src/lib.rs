@@ -3372,6 +3372,206 @@ mod test {
     }
 
     // ========================================================================
+    // Multi-token balance accounting tests
+    // Lock different tokens into the same contract (different programs);
+    // verify remaining_balance per token/program and that operations on one
+    // do not affect others.
+    // ========================================================================
+
+    #[test]
+    fn test_multi_token_two_programs_two_tokens_lock_and_remaining_balance() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin_a = Address::generate(&env);
+        let admin_b = Address::generate(&env);
+        let contract_id = env.register_contract(None, ProgramEscrowContract);
+        let client = ProgramEscrowContractClient::new(&env, &contract_id);
+
+        let token_a = create_token_contract(&env, &admin_a);
+        let token_b = create_token_contract(&env, &admin_b);
+        let token_admin_a = token::StellarAssetClient::new(&env, &token_a.address);
+        let token_admin_b = token::StellarAssetClient::new(&env, &token_b.address);
+
+        let backend_a = Address::generate(&env);
+        let backend_b = Address::generate(&env);
+        let prog_a = String::from_str(&env, "ProgramTokenA");
+        let prog_b = String::from_str(&env, "ProgramTokenB");
+
+        let amount_a = 50_000_0000000i128;
+        let amount_b = 80_000_0000000i128;
+
+        token_admin_a.mint(&admin_a, &amount_a);
+        token_admin_b.mint(&admin_b, &amount_b);
+
+        client.initialize_program(&prog_a, &backend_a, &token_a.address);
+        client.initialize_program(&prog_b, &backend_b, &token_b.address);
+
+        token_a.transfer(&admin_a, &contract_id, &amount_a);
+        client.lock_program_funds(&prog_a, &amount_a);
+        token_b.transfer(&admin_b, &contract_id, &amount_b);
+        client.lock_program_funds(&prog_b, &amount_b);
+
+        assert_eq!(client.get_remaining_balance(&prog_a), amount_a);
+        assert_eq!(client.get_remaining_balance(&prog_b), amount_b);
+
+        let info_a = client.get_program_info(&prog_a);
+        let info_b = client.get_program_info(&prog_b);
+        assert_eq!(info_a.remaining_balance, amount_a);
+        assert_eq!(info_b.remaining_balance, amount_b);
+        assert_eq!(info_a.token_address, token_a.address);
+        assert_eq!(info_b.token_address, token_b.address);
+    }
+
+    #[test]
+    fn test_multi_token_payout_one_program_does_not_affect_other_remaining_balance() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin_a = Address::generate(&env);
+        let admin_b = Address::generate(&env);
+        let contract_id = env.register_contract(None, ProgramEscrowContract);
+        let client = ProgramEscrowContractClient::new(&env, &contract_id);
+
+        let token_a = create_token_contract(&env, &admin_a);
+        let token_b = create_token_contract(&env, &admin_b);
+        let token_admin_a = token::StellarAssetClient::new(&env, &token_a.address);
+        let token_admin_b = token::StellarAssetClient::new(&env, &token_b.address);
+
+        let backend_a = Address::generate(&env);
+        let backend_b = Address::generate(&env);
+        let prog_a = String::from_str(&env, "ProgA");
+        let prog_b = String::from_str(&env, "ProgB");
+
+        let amount_a = 100_000_0000000i128;
+        let amount_b = 200_000_0000000i128;
+        token_admin_a.mint(&admin_a, &amount_a);
+        token_admin_b.mint(&admin_b, &amount_b);
+
+        client.initialize_program(&prog_a, &backend_a, &token_a.address);
+        client.initialize_program(&prog_b, &backend_b, &token_b.address);
+        token_a.transfer(&admin_a, &contract_id, &amount_a);
+        client.lock_program_funds(&prog_a, &amount_a);
+        token_b.transfer(&admin_b, &contract_id, &amount_b);
+        client.lock_program_funds(&prog_b, &amount_b);
+
+        let recipient_a = Address::generate(&env);
+        let payout_a = 30_000_0000000i128;
+
+        // With mock_all_auths(), authorization is automatically satisfied
+        client.single_payout(&prog_a, &recipient_a, &payout_a);
+
+        assert_eq!(client.get_remaining_balance(&prog_a), amount_a - payout_a);
+        assert_eq!(client.get_remaining_balance(&prog_b), amount_b);
+
+        let info_a = client.get_program_info(&prog_a);
+        let info_b = client.get_program_info(&prog_b);
+        assert_eq!(info_a.remaining_balance, amount_a - payout_a);
+        assert_eq!(info_b.remaining_balance, amount_b);
+
+        assert_eq!(token_a.balance(&recipient_a), payout_a);
+        assert_eq!(token_b.balance(&recipient_a), 0);
+        assert_eq!(token_a.balance(&contract_id), amount_a - payout_a);
+        assert_eq!(token_b.balance(&contract_id), amount_b);
+    }
+
+    #[test]
+    fn test_multi_token_independent_payouts_both_tokens() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin_a = Address::generate(&env);
+        let admin_b = Address::generate(&env);
+        let contract_id = env.register_contract(None, ProgramEscrowContract);
+        let client = ProgramEscrowContractClient::new(&env, &contract_id);
+
+        let token_a = create_token_contract(&env, &admin_a);
+        let token_b = create_token_contract(&env, &admin_b);
+        let token_admin_a = token::StellarAssetClient::new(&env, &token_a.address);
+        let token_admin_b = token::StellarAssetClient::new(&env, &token_b.address);
+
+        let backend_a = Address::generate(&env);
+        let backend_b = Address::generate(&env);
+        let prog_a = String::from_str(&env, "ProgA");
+        let prog_b = String::from_str(&env, "ProgB");
+
+        let amount_a = 60_000_0000000i128;
+        let amount_b = 90_000_0000000i128;
+        token_admin_a.mint(&admin_a, &amount_a);
+        token_admin_b.mint(&admin_b, &amount_b);
+
+        client.initialize_program(&prog_a, &backend_a, &token_a.address);
+        client.initialize_program(&prog_b, &backend_b, &token_b.address);
+        token_a.transfer(&admin_a, &contract_id, &amount_a);
+        client.lock_program_funds(&prog_a, &amount_a);
+        token_b.transfer(&admin_b, &contract_id, &amount_b);
+        client.lock_program_funds(&prog_b, &amount_b);
+
+        let recipient1 = Address::generate(&env);
+        let recipient2 = Address::generate(&env);
+
+        // With mock_all_auths(), authorization is automatically satisfied
+        client.single_payout(&prog_a, &recipient1, &20_000_0000000i128);
+        client.single_payout(&prog_b, &recipient2, &40_000_0000000i128);
+
+        assert_eq!(client.get_remaining_balance(&prog_a), 40_000_0000000i128);
+        assert_eq!(client.get_remaining_balance(&prog_b), 50_000_0000000i128);
+        assert_eq!(token_a.balance(&recipient1), 20_000_0000000i128);
+        assert_eq!(token_b.balance(&recipient2), 40_000_0000000i128);
+        assert_eq!(token_a.balance(&recipient2), 0);
+        assert_eq!(token_b.balance(&recipient1), 0);
+    }
+
+    #[test]
+    fn test_multi_token_batch_payout_one_program_remaining_balance_maps_unchanged_for_other() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin_a = Address::generate(&env);
+        let admin_b = Address::generate(&env);
+        let contract_id = env.register_contract(None, ProgramEscrowContract);
+        let client = ProgramEscrowContractClient::new(&env, &contract_id);
+
+        let token_a = create_token_contract(&env, &admin_a);
+        let token_b = create_token_contract(&env, &admin_b);
+        let token_admin_a = token::StellarAssetClient::new(&env, &token_a.address);
+        let token_admin_b = token::StellarAssetClient::new(&env, &token_b.address);
+
+        let backend_a = Address::generate(&env);
+        let backend_b = Address::generate(&env);
+        let prog_a = String::from_str(&env, "ProgA");
+        let prog_b = String::from_str(&env, "ProgB");
+
+        let amount_a = 100_000_0000000i128;
+        let amount_b = 100_000_0000000i128;
+        token_admin_a.mint(&admin_a, &amount_a);
+        token_admin_b.mint(&admin_b, &amount_b);
+
+        client.initialize_program(&prog_a, &backend_a, &token_a.address);
+        client.initialize_program(&prog_b, &backend_b, &token_b.address);
+        token_a.transfer(&admin_a, &contract_id, &amount_a);
+        client.lock_program_funds(&prog_a, &amount_a);
+        token_b.transfer(&admin_b, &contract_id, &amount_b);
+        client.lock_program_funds(&prog_b, &amount_b);
+
+        let r1 = Address::generate(&env);
+        let r2 = Address::generate(&env);
+        let recipients = soroban_sdk::vec![&env, r1.clone(), r2.clone()];
+        let amounts = soroban_sdk::vec![&env, 25_000_0000000i128, 35_000_0000000i128];
+
+        // With mock_all_auths(), authorization is automatically satisfied
+        client.batch_payout(&prog_a, &recipients, &amounts);
+
+        assert_eq!(client.get_remaining_balance(&prog_a), 40_000_0000000i128);
+        assert_eq!(client.get_remaining_balance(&prog_b), amount_b);
+
+        let info_b = client.get_program_info(&prog_b);
+        assert_eq!(info_b.remaining_balance, amount_b);
+        assert_eq!(info_b.total_funds, amount_b);
+        assert_eq!(info_b.payout_history.len(), 0);
+    }
+
+    // ========================================================================
     // Anti-Abuse Tests
     // ========================================================================
 

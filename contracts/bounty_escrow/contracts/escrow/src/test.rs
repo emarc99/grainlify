@@ -1519,3 +1519,143 @@ fn test_claim_does_not_affect_other_bounties() {
     setup.escrow.release_funds(&2, &contributor2);
     assert_eq!(setup.token.balance(&contributor2), 2000);
 }
+
+// ============================================================================
+// Multi-token / multi-bounty balance accounting tests
+// Verify remaining_amount per bounty and that operations on one do not affect others
+// ============================================================================
+
+#[test]
+fn test_multi_bounty_remaining_amount_per_bounty() {
+    let setup = TestSetup::new();
+    let deadline = setup.env.ledger().timestamp() + 10_000;
+
+    setup.token_admin.mint(&setup.depositor, &10_000);
+
+    // Lock different amounts into three bounties
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &1, &1000, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &2, &2000, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &3, &3000, &deadline);
+
+    // Verify remaining_balance (remaining_amount) per bounty before any release
+    let e1 = setup.escrow.get_escrow_info(&1);
+    let e2 = setup.escrow.get_escrow_info(&2);
+    let e3 = setup.escrow.get_escrow_info(&3);
+    assert_eq!(e1.remaining_amount, 1000);
+    assert_eq!(e2.remaining_amount, 2000);
+    assert_eq!(e3.remaining_amount, 3000);
+    assert_eq!(e1.amount, 1000);
+    assert_eq!(e2.amount, 2000);
+    assert_eq!(e3.amount, 3000);
+
+    assert_eq!(setup.token.balance(&setup.escrow_address), 6000);
+
+    // Release only bounty 2 to contributor
+    setup.escrow.release_funds(&2, &setup.contributor);
+
+    // Per-bounty remaining_amount: bounty 1 and 3 unchanged; bounty 2 now released (remaining 0)
+    let e1_after = setup.escrow.get_escrow_info(&1);
+    let e2_after = setup.escrow.get_escrow_info(&2);
+    let e3_after = setup.escrow.get_escrow_info(&3);
+    assert_eq!(e1_after.remaining_amount, 1000);
+    assert_eq!(e1_after.status, EscrowStatus::Locked);
+    assert_eq!(e2_after.remaining_amount, 0);
+    assert_eq!(e2_after.status, EscrowStatus::Released);
+    assert_eq!(e3_after.remaining_amount, 3000);
+    assert_eq!(e3_after.status, EscrowStatus::Locked);
+
+    // Contract balance decreased by bounty 2 amount only
+    assert_eq!(setup.token.balance(&setup.escrow_address), 4000);
+    assert_eq!(setup.token.balance(&setup.contributor), 2000);
+}
+
+#[test]
+fn test_multi_bounty_refund_one_does_not_affect_other() {
+    let setup = TestSetup::new();
+    let now = setup.env.ledger().timestamp();
+    let deadline = now + 1000;
+
+    // TestSetup already mints 1_000_000 to depositor
+    let initial_balance = setup.token.balance(&setup.depositor);
+
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &1, &1000, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &2, &2000, &deadline);
+
+    let e1 = setup.escrow.get_escrow_info(&1);
+    let e2 = setup.escrow.get_escrow_info(&2);
+    assert_eq!(e1.remaining_amount, 1000);
+    assert_eq!(e2.remaining_amount, 2000);
+
+    // Advance past deadline
+    setup.env.ledger().set_timestamp(deadline + 1);
+
+    // Refund only bounty 1
+    setup.escrow.refund(
+        &1,
+        &None::<i128>,
+        &None::<Address>,
+        &RefundMode::Full,
+    );
+
+    // Bounty 1: refunded; bounty 2: unchanged
+    let e1_after = setup.escrow.get_escrow_info(&1);
+    let e2_after = setup.escrow.get_escrow_info(&2);
+    assert_eq!(e1_after.status, EscrowStatus::Refunded);
+    assert_eq!(e1_after.remaining_amount, 0);
+    assert_eq!(e2_after.status, EscrowStatus::Locked);
+    assert_eq!(e2_after.remaining_amount, 2000);
+
+    // Contract still holds bounty 2's amount
+    assert_eq!(setup.token.balance(&setup.escrow_address), 2000);
+    // Depositor: initial - 3000 (locked) + 1000 (refunded) = initial - 2000
+    assert_eq!(setup.token.balance(&setup.depositor), initial_balance - 2000);
+}
+
+#[test]
+fn test_multi_bounty_lock_and_release_independent_balance_maps() {
+    let setup = TestSetup::new();
+    let contributor2 = Address::generate(&setup.env);
+    let deadline = setup.env.ledger().timestamp() + 10_000;
+
+    setup.token_admin.mint(&setup.depositor, &10_000);
+
+    // Lock two bounties
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &1, &1500, &deadline);
+    setup
+        .escrow
+        .lock_funds(&setup.depositor, &2, &2500, &deadline);
+
+    assert_eq!(setup.escrow.get_escrow_info(&1).remaining_amount, 1500);
+    assert_eq!(setup.escrow.get_escrow_info(&2).remaining_amount, 2500);
+    assert_eq!(setup.escrow.get_balance(), 4000);
+
+    // Release bounty 1 only
+    setup.escrow.release_funds(&1, &setup.contributor);
+
+    // remaining_amount and status correct per bounty; operation on bounty 1 did not affect bounty 2
+    assert_eq!(setup.escrow.get_escrow_info(&1).remaining_amount, 0);
+    assert_eq!(setup.escrow.get_escrow_info(&1).status, EscrowStatus::Released);
+    assert_eq!(setup.escrow.get_escrow_info(&2).remaining_amount, 2500);
+    assert_eq!(setup.escrow.get_escrow_info(&2).status, EscrowStatus::Locked);
+
+    assert_eq!(setup.token.balance(&setup.contributor), 1500);
+
+    // Release bounty 2 to different contributor
+    setup.escrow.release_funds(&2, &contributor2);
+    assert_eq!(setup.escrow.get_escrow_info(&2).remaining_amount, 0);
+    assert_eq!(setup.escrow.get_escrow_info(&2).status, EscrowStatus::Released);
+    assert_eq!(setup.token.balance(&contributor2), 2500);
+    assert_eq!(setup.token.balance(&setup.escrow_address), 0);
+}
