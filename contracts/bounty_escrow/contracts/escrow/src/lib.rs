@@ -370,6 +370,8 @@ pub enum Error {
     AmountBelowMinimum = 19,
     /// Returned when lock amount is above the configured policy maximum (Issue #62)
     AmountAboveMaximum = 20,
+    /// Returned when refund is blocked by a pending claim/dispute
+    ClaimPending = 21,
 }
 
 #[contracttype]
@@ -1330,38 +1332,78 @@ impl BountyEscrowContract {
             .get(&DataKey::Escrow(bounty_id))
             .unwrap();
 
-        if escrow.status != EscrowStatus::Locked {
+        if escrow.status != EscrowStatus::Locked && escrow.status != EscrowStatus::PartiallyRefunded {
             return Err(Error::FundsNotLocked);
         }
 
-        let now = env.ledger().timestamp();
-        if now < escrow.deadline {
-            return Err(Error::DeadlineNotPassed);
+        // GUARD 1: Block refund if there is a pending claim (Issue #391 fix)
+        if env.storage().persistent().has(&DataKey::PendingClaim(bounty_id)) {
+            let claim: ClaimRecord = env.storage().persistent().get(&DataKey::PendingClaim(bounty_id)).unwrap();
+            if !claim.claimed {
+                return Err(Error::ClaimPending);
+            }
         }
+
+        let now = env.ledger().timestamp();
+        let approval: Option<RefundApproval> = env.storage().persistent().get(&DataKey::RefundApproval(bounty_id));
+        
+        // Decide amount and recipient based on approval or deadline
+        let (refund_amount, refund_to) = if let Some(app) = approval {
+            // Early refund or specific partial refund approved by admin
+            (app.amount, app.recipient)
+        } else {
+            // Standard refund after deadline - full remaining amount to depositor
+            if now < escrow.deadline {
+                return Err(Error::DeadlineNotPassed);
+            }
+            (escrow.remaining_amount, escrow.depositor.clone())
+        };
 
         let token_addr: Address = env.storage().instance().get(&DataKey::Token).unwrap();
         let client = token::Client::new(&env, &token_addr);
 
-        // Refund only what is still remaining (partial releases may have already gone out)
+        // Transfer funds
         client.transfer(
             &env.current_contract_address(),
-            &escrow.depositor,
-            &escrow.remaining_amount,
+            &refund_to,
+            &refund_amount,
         );
 
-        escrow.status = EscrowStatus::Refunded;
+        // Update escrow state
+        escrow.remaining_amount -= refund_amount;
+        let mode = if escrow.remaining_amount == 0 {
+            escrow.status = EscrowStatus::Refunded;
+            RefundMode::Full
+        } else {
+            escrow.status = EscrowStatus::PartiallyRefunded;
+            RefundMode::Partial
+        };
+
+        // Log to history
+        escrow.refund_history.push_back(RefundRecord {
+            amount: refund_amount,
+            recipient: refund_to.clone(),
+            timestamp: now,
+            mode,
+        });
+
         env.storage()
             .persistent()
             .set(&DataKey::Escrow(bounty_id), &escrow);
+
+        // Clear approval if it was used
+        if env.storage().persistent().has(&DataKey::RefundApproval(bounty_id)) {
+            env.storage().persistent().remove(&DataKey::RefundApproval(bounty_id));
+        }
 
         emit_funds_refunded(
             &env,
             FundsRefunded {
                 version: EVENT_VERSION_V2,
                 bounty_id,
-                amount: escrow.remaining_amount,
-                refund_to: escrow.depositor,
-                timestamp: env.ledger().timestamp(),
+                amount: refund_amount,
+                refund_to,
+                timestamp: now,
             },
         );
 
@@ -2045,6 +2087,7 @@ mod escrow_status_transition_tests {
 
     /// Construct a fresh Escrow instance with the specified status.
     fn create_escrow_with_status(
+        env: &Env,
         depositor: Address,
         amount: i128,
         status: EscrowStatus,
@@ -2053,8 +2096,10 @@ mod escrow_status_transition_tests {
         Escrow {
             depositor,
             amount,
+            remaining_amount: amount,
             status,
             deadline,
+            refund_history: vec![env],
         }
     }
 
@@ -2101,7 +2146,7 @@ mod escrow_status_transition_tests {
         fn setup_escrow_in_state(&self, status: EscrowStatus, bounty_id: u64, amount: i128) {
             let deadline = self.env.ledger().timestamp() + 1000;
             let escrow =
-                create_escrow_with_status(self.depositor.clone(), amount, status, deadline);
+                create_escrow_with_status(&self.env, self.depositor.clone(), amount, status, deadline);
 
             // Mint tokens directly to the contract to bypass lock_funds logic but guarantee token transfer succeeds for valid transitions
             self.token_admin.mint(&self.contract_id, &amount);
