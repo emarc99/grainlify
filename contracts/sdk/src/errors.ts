@@ -65,6 +65,8 @@ export enum ContractErrorCode {
   EMPTY_BATCH              = 'EMPTY_BATCH',
   LENGTH_MISMATCH          = 'LENGTH_MISMATCH',
   OVERFLOW                 = 'OVERFLOW',
+  AMOUNT_BELOW_MIN         = 'AMOUNT_BELOW_MIN',
+  AMOUNT_ABOVE_MAX         = 'AMOUNT_ABOVE_MAX',
 
   // ── Bounty-Escrow (contracts/bounty_escrow) ────────────────────────────
   BOUNTY_ALREADY_INITIALIZED = 'BOUNTY_ALREADY_INITIALIZED',   // 1
@@ -121,6 +123,8 @@ const CONTRACT_ERROR_MESSAGES: Record<ContractErrorCode, string> = {
   [ContractErrorCode.EMPTY_BATCH]:               'Cannot process empty batch',
   [ContractErrorCode.LENGTH_MISMATCH]:           'Recipients and amounts vectors must have the same length',
   [ContractErrorCode.OVERFLOW]:                  'Payout amount overflow',
+  [ContractErrorCode.AMOUNT_BELOW_MIN]:          'Amount is below the minimum allowed by policy',
+  [ContractErrorCode.AMOUNT_ABOVE_MAX]:          'Amount exceeds the maximum allowed by policy',
 
   // Bounty-Escrow
   [ContractErrorCode.BOUNTY_ALREADY_INITIALIZED]: 'Bounty escrow contract is already initialized',
@@ -272,6 +276,12 @@ export function parseContractError(error: any): ContractError {
   }
   if (errorMessage.includes('Insufficient balance')) {
     return createContractError(ContractErrorCode.INSUFFICIENT_BALANCE);
+  }
+  if (/below.*min(imum)?|AmountBelowMinimum/i.test(errorMessage)) {
+    return createContractError(ContractErrorCode.AMOUNT_BELOW_MIN);
+  }
+  if (/above.*max(imum)?|exceed.*max|AmountAboveMaximum/i.test(errorMessage)) {
+    return createContractError(ContractErrorCode.AMOUNT_ABOVE_MAX);
   }
   if (errorMessage.includes('must be greater than zero')) {
     return createContractError(ContractErrorCode.INVALID_AMOUNT);

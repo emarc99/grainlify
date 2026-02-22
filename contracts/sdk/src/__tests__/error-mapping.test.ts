@@ -154,6 +154,10 @@ describe('parseContractError string matching', () => {
     ['Cannot process empty batch',                     ContractErrorCode.EMPTY_BATCH],
     ['Recipients and amounts must have the same length', ContractErrorCode.LENGTH_MISMATCH],
     ['Payout amount overflow',                         ContractErrorCode.OVERFLOW],
+    ['Amount is below minimum',                        ContractErrorCode.AMOUNT_BELOW_MIN],
+    ['AmountBelowMinimum',                             ContractErrorCode.AMOUNT_BELOW_MIN],
+    ['Amount exceeds maximum allowed',                 ContractErrorCode.AMOUNT_ABOVE_MAX],
+    ['AmountAboveMaximum',                             ContractErrorCode.AMOUNT_ABOVE_MAX],
   ];
 
   it.each(programEscrowCases)(
@@ -294,8 +298,8 @@ describe('Cross-layer consistency', () => {
 describe('Enum size regression guards', () => {
   it('ContractErrorCode has the expected number of values', () => {
     const count = Object.keys(ContractErrorCode).length;
-    // 8 program-escrow + 17 bounty-escrow + 14 governance + 3 circuit-breaker = 42
-    expect(count).toBe(42);
+    // 10 program-escrow + 17 bounty-escrow + 14 governance + 3 circuit-breaker = 44
+    expect(count).toBe(44);
   });
 
   it('BOUNTY_ESCROW_ERROR_MAP has 17 entries', () => {
