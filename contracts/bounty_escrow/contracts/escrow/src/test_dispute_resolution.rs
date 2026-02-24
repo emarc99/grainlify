@@ -1,4 +1,4 @@
-#![cfg(test)]
+
 
 // Dispute resolution test stubs
 // These tests will be implemented once Issue 61 (dispute resolution) is complete

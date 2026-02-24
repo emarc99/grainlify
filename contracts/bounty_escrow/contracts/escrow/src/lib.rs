@@ -1,5 +1,5 @@
 #![no_std]
-
+#[allow(dead_code)]
 mod events;
 mod invariants;
 #[cfg(test)]
@@ -24,8 +24,11 @@ mod monitoring {
     use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
 
     // Storage keys
+    #[allow(dead_code)]
     const OPERATION_COUNT: &str = "op_count";
+    #[allow(dead_code)]
     const USER_COUNT: &str = "usr_count";
+    #[allow(dead_code)]
     const ERROR_COUNT: &str = "err_count";
 
     // Event: Operation metric
@@ -89,6 +92,7 @@ mod monitoring {
     }
 
     // Track operation
+    #[allow(dead_code)]
     pub fn track_operation(env: &Env, operation: Symbol, caller: Address, success: bool) {
         let key = Symbol::new(env, OPERATION_COUNT);
         let count: u64 = env.storage().persistent().get(&key).unwrap_or(0);
@@ -112,6 +116,7 @@ mod monitoring {
     }
 
     // Track performance
+    #[allow(dead_code)]
     pub fn emit_performance(env: &Env, function: Symbol, duration: u64) {
         let count_key = (Symbol::new(env, "perf_cnt"), function.clone());
         let time_key = (Symbol::new(env, "perf_time"), function.clone());
@@ -135,6 +140,7 @@ mod monitoring {
     }
 
     // Health check
+    #[allow(dead_code)]
     pub fn health_check(env: &Env) -> HealthStatus {
         let key = Symbol::new(env, OPERATION_COUNT);
         let ops: u64 = env.storage().persistent().get(&key).unwrap_or(0);
@@ -148,6 +154,7 @@ mod monitoring {
     }
 
     // Get analytics
+    #[allow(dead_code)]
     pub fn get_analytics(env: &Env) -> Analytics {
         let op_key = Symbol::new(env, OPERATION_COUNT);
         let usr_key = Symbol::new(env, USER_COUNT);
@@ -172,6 +179,7 @@ mod monitoring {
     }
 
     // Get state snapshot
+    #[allow(dead_code)]
     pub fn get_state_snapshot(env: &Env) -> StateSnapshot {
         let op_key = Symbol::new(env, OPERATION_COUNT);
         let usr_key = Symbol::new(env, USER_COUNT);
@@ -186,6 +194,7 @@ mod monitoring {
     }
 
     // Get performance stats
+    #[allow(dead_code)]
     pub fn get_performance_stats(env: &Env, function_name: Symbol) -> PerformanceStats {
         let count_key = (Symbol::new(env, "perf_cnt"), function_name.clone());
         let time_key = (Symbol::new(env, "perf_time"), function_name.clone());
@@ -248,6 +257,7 @@ mod anti_abuse {
             })
     }
 
+    #[allow(dead_code)]
     pub fn set_config(env: &Env, config: AntiAbuseConfig) {
         env.storage().instance().set(&AntiAbuseKey::Config, &config);
     }
@@ -342,6 +352,7 @@ mod anti_abuse {
 // ==================== END ANTI-ABUSE MODULE ====================
 
 // ==================== CONSTANTS ====================
+#[allow(dead_code)]
 const BASIS_POINTS: i128 = 10_000;
 const MAX_FEE_RATE: i128 = 5_000; // 50% max fee
 const MAX_BATCH_SIZE: u32 = 20;
@@ -571,6 +582,7 @@ impl BountyEscrowContract {
     }
 
     /// Calculate fee amount based on rate (in basis points)
+    #[allow(dead_code)]
     fn calculate_fee(amount: i128, fee_rate: i128) -> i128 {
         if fee_rate == 0 {
             return 0;
@@ -614,14 +626,14 @@ impl BountyEscrowContract {
         let mut fee_config = Self::get_fee_config_internal(&env);
 
         if let Some(rate) = lock_fee_rate {
-            if rate < 0 || rate > MAX_FEE_RATE {
+            if !(0..=MAX_FEE_RATE).contains(&rate) {
                 return Err(Error::InvalidFeeRate);
             }
             fee_config.lock_fee_rate = rate;
         }
 
         if let Some(rate) = release_fee_rate {
-            if rate < 0 || rate > MAX_FEE_RATE {
+            if !(0..=MAX_FEE_RATE).contains(&rate) {
                 return Err(Error::InvalidFeeRate);
             }
             fee_config.release_fee_rate = rate;
@@ -1922,7 +1934,7 @@ impl BountyEscrowContract {
             return Err(Error::FundsPaused);
         }
         // Validate batch size
-        let batch_size = items.len() as u32;
+        let batch_size = items.len();
         if batch_size == 0 {
             return Err(Error::InvalidBatchSize);
         }
@@ -2055,7 +2067,7 @@ impl BountyEscrowContract {
             return Err(Error::FundsPaused);
         }
         // Validate batch size
-        let batch_size = items.len() as u32;
+        let batch_size = items.len();
         if batch_size == 0 {
             return Err(Error::InvalidBatchSize);
         }
